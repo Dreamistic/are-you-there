@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
+<title>are-you-there</title>
+<!--
+  Answer page for the are-you-there Claude Code plugin.
+  Everything this page needs travels in the URL fragment (#...), which browsers
+  never send to the server hosting this file. The only network request is the
+  answer itself, POSTed to the one-time relay topic named in the fragment.
+-->
+<style>
+  :root {
+    --bg: #f4f4f1; --card: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --line: #e3e3de;
+    --accent: #0f766e; --accent-soft: #e6f2f0; --danger: #b42318; --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141413; --card: #1e1e1c; --text: #ececea; --muted: #9a9a94; --line: #2f2f2c;
+      --accent: #2dd4bf; --accent-soft: #15302d; --danger: #f97066;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+          "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent;
+  }
+  main { max-width: 560px; margin: 0 auto; padding: 28px 18px calc(110px + env(safe-area-inset-bottom)); }
+  .brand { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; letter-spacing: .02em; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
+  h1 { font-size: 24px; line-height: 1.25; margin: 14px 0 4px; font-weight: 650; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 22px; }
+  .q { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 16px 10px; margin-bottom: 14px; }
+  .chip { display: inline-block; font-size: 12px; font-weight: 600; color: var(--accent); background: var(--accent-soft);
+          border-radius: 999px; padding: 2px 10px; margin-bottom: 8px; }
+  .q h2 { font-size: 17px; line-height: 1.4; margin: 0 0 12px; font-weight: 600; }
+  .hint { color: var(--muted); font-size: 13px; margin: -6px 0 10px; }
+  .opt { position: relative; display: flex; gap: 12px; align-items: flex-start; padding: 13px 12px; margin: 0 0 8px;
+         border: 1.5px solid var(--line); border-radius: 12px; cursor: pointer; transition: border-color .12s, background .12s; }
+  .opt input { position: absolute; opacity: 0; pointer-events: none; }
+  .mark { flex: none; width: 20px; height: 20px; margin-top: 2px; border: 1.5px solid var(--muted); border-radius: 50%;
+          display: grid; place-items: center; transition: all .12s; }
+  .multi .mark { border-radius: 6px; }
+  .mark::after { content: ""; width: 10px; height: 10px; border-radius: inherit; background: transparent; }
+  .opt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+  .opt:has(input:checked) .mark { border-color: var(--accent); }
+  .opt:has(input:checked) .mark::after { background: var(--accent); }
+  .opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .label { font-weight: 600; }
+  .desc { color: var(--muted); font-size: 14px; margin-top: 2px; }
+  .other { width: 100%; margin-top: 8px; padding: 10px 12px; font: inherit; color: var(--text); background: var(--bg);
+           border: 1px solid var(--line); border-radius: 10px; }
+  .bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
+         background: linear-gradient(to top, var(--bg) 70%, transparent); }
+  .bar > div { max-width: 560px; margin: 0 auto; }
+  button { width: 100%; padding: 15px; font: inherit; font-weight: 650; color: #fff; background: var(--accent);
+           border: 0; border-radius: 12px; cursor: pointer; transition: opacity .12s; }
+  @media (prefers-color-scheme: dark) { button { color: #04201d; } }
+  button:disabled { opacity: .35; cursor: default; }
+  .msg { text-align: center; padding: 64px 12px; }
+  .msg .big { width: 56px; height: 56px; margin: 0 auto 18px; border-radius: 50%; display: grid; place-items: center;
+              background: var(--accent-soft); color: var(--accent); font-size: 28px; }
+  .msg.bad .big { color: var(--danger); background: transparent; border: 1.5px solid var(--danger); }
+  .msg h1 { margin-top: 0; }
+  .err { color: var(--danger); font-size: 14px; text-align: center; margin: 0 0 10px; min-height: 1em; }
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script>
+(function () {
+  "use strict";
+  var T = {
+    en: {
+      title: "Claude has a question", from: "From {p}", pick: "Pick one", pickMany: "Pick one or more",
+      other: "Other", otherPh: "Type your answer", send: "Send answer", sending: "Sending…",
+      sentTitle: "Sent", sentBody: "Claude has your answer and is carrying on. You can close this page.",
+      failed: "Couldn't send. Check your connection and try again.",
+      badTitle: "This link doesn't work", badBody: "Open it from the notification on this phone, without editing it."
+    },
+    zh: {
+      title: "Claude 有个问题要问你", from: "来自 {p}", pick: "选一个", pickMany: "可以多选",
+      other: "其他", otherPh: "写下你的回答", send: "发送", sending: "发送中…",
+      sentTitle: "发过去了", sentBody: "Claude 收到了你的回答，正在继续。这个页面可以关掉了。",
+      failed: "没发出去，检查一下网络再试一次。",
+      badTitle: "这个链接打不开", badBody: "从手机上的通知直接点进来，别改动链接。"
+    }
+  };
+  var app = document.getElementById("app");
+  var lang = /^zh/i.test(navigator.language || "") ? "zh" : "en";
+  var s = function (key, vars) {
+    var text = (T[lang] || T.en)[key];
+    for (var k in vars || {}) text = text.replace("{" + k + "}", vars[k]);
+    return text;
+  };
+
+  function el(tag, attrs) {
+    var node = document.createElement(tag);
+    for (var k in attrs || {}) {
+      if (k === "text") node.textContent = attrs[k];
+      else if (k === "class") node.className = attrs[k];
+      else node.setAttribute(k, attrs[k]);
+    }
+    for (var i = 2; i < arguments.length; i++) if (arguments[i]) node.appendChild(arguments[i]);
+    return node;
+  }
+
+  function decode(raw) {
+    var b64 = raw.replace(/-/g, "+").replace(/_/g, "/");
+    while (b64.length % 4) b64 += "=";
+    var bin = atob(b64), bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }
+
+  function message(ok, title, body) {
+    app.replaceChildren(el("div", { class: "msg" + (ok ? "" : " bad") },
+      el("div", { class: "big", text: ok ? "✓" : "!" }),
+      el("h1", { text: title }),
+      el("p", { class: "sub", text: body })));
+    var bar = document.querySelector(".bar");
+    if (bar) bar.remove();
+  }
+
+  var data;
+  try {
+    data = decode(location.hash.slice(1));
+    if (!data || data.v !== 1 || !/^https?:\/\//.test(data.r) || !data.t || !data.n || !Array.isArray(data.q)) throw 0;
+  } catch (e) {
+    message(false, s("badTitle"), s("badBody"));
+    return;
+  }
+  if (T[data.l]) lang = data.l;
+  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+  var doneKey = "ayt:" + data.t;
+
+  if (sessionStorage.getItem(doneKey)) { message(true, s("sentTitle"), s("sentBody")); return; }
+
+  var groups = [];
+  var header = el("div", null,
+    el("div", { class: "brand" }, el("span", { class: "dot" }), el("span", { text: lang === "zh" ? "在吗 · are-you-there" : "are-you-there" })),
+    el("h1", { text: s("title") }),
+    data.p ? el("p", { class: "sub", text: s("from", { p: data.p }) }) : el("p", { class: "sub" }));
+  app.replaceChildren(header);
+
+  data.q.forEach(function (q, qi) {
+    var multi = !!q.m, name = "q" + qi;
+    var box = el("section", { class: "q" + (multi ? " multi" : "") },
+      q.h ? el("span", { class: "chip", text: q.h }) : null,
+      el("h2", { text: q.q }),
+      el("p", { class: "hint", text: multi ? s("pickMany") : s("pick") }));
+    var inputs = [];
+    (q.o || []).forEach(function (o) {
+      var input = el("input", { type: multi ? "checkbox" : "radio", name: name, value: o[0] });
+      inputs.push(input);
+      box.appendChild(el("label", { class: "opt" }, input, el("span", { class: "mark" }),
+        el("span", null, el("div", { class: "label", text: o[0] }), o[1] ? el("div", { class: "desc", text: o[1] }) : null)));
+    });
+    var otherInput = null, otherText = null;
+    if (data.x) {
+      otherInput = el("input", { type: multi ? "checkbox" : "radio", name: name, value: "" });
+      otherText = el("input", { class: "other", type: "text", maxlength: "500", placeholder: s("otherPh") });
+      otherText.addEventListener("input", function () { otherInput.checked = !!otherText.value.trim(); refresh(); });
+      box.appendChild(el("label", { class: "opt" }, otherInput, el("span", { class: "mark" }),
+        el("span", { style: "flex:1" }, el("div", { class: "label", text: s("other") }), otherText)));
+    }
+    box.addEventListener("change", refresh);
+    groups.push({ q: q, multi: multi, inputs: inputs, otherInput: otherInput, otherText: otherText });
+    app.appendChild(box);
+  });
+
+  var error = el("p", { class: "err" });
+  var button = el("button", { type: "button", text: s("send") });
+  document.body.appendChild(el("div", { class: "bar" }, el("div", null, error, button)));
+
+  function collect() {
+    var answers = {};
+    for (var i = 0; i < groups.length; i++) {
+      var g = groups[i], picked = [];
+      g.inputs.forEach(function (input) { if (input.checked) picked.push(input.value); });
+      if (g.otherInput && g.otherInput.checked && g.otherText.value.trim()) picked.push(g.otherText.value.trim());
+      if (!picked.length) return null;
+      answers[g.q.q] = g.multi ? picked : picked[0];
+    }
+    return answers;
+  }
+  function refresh() { button.disabled = !collect(); }
+  refresh();
+
+  button.addEventListener("click", function () {
+    var answers = collect();
+    if (!answers) return;
+    button.disabled = true;
+    button.textContent = s("sending");
+    error.textContent = "";
+    var init = { method: "POST", body: JSON.stringify({ n: data.n, a: answers }) };
+    if (data.k) init.headers = { Authorization: "Bearer " + data.k };
+    fetch(data.r.replace(/\/+$/, "") + "/" + encodeURIComponent(data.t), init)
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.status);
+        sessionStorage.setItem(doneKey, "1");
+        message(true, s("sentTitle"), s("sentBody"));
+      })
+      .catch(function () {
+        error.textContent = s("failed");
+        button.textContent = s("send");
+        refresh();
+      });
+  });
+})();
+</script>
+</body>
+</html>

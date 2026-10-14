@@ -1,0 +1,89 @@
+{
+  "name": "are-you-there",
+  "displayName": "are-you-there (在吗)",
+  "version": "0.1.0",
+  "description": "Lets Claude Code know whether you're at the terminal, elsewhere on the computer, or away. When you're away, its questions go to your phone and you answer with a tap. 让 Claude Code 知道你在不在终端前；你不在时，问题推到手机上，点一下就能答。",
+  "author": {
+    "name": "Dreamistic",
+    "url": "https://github.com/Dreamistic"
+  },
+  "homepage": "https://github.com/Dreamistic/are-you-there",
+  "repository": "https://github.com/Dreamistic/are-you-there",
+  "license": "MIT",
+  "keywords": [
+    "presence",
+    "afk",
+    "notification",
+    "phone",
+    "ntfy",
+    "bark",
+    "AskUserQuestion",
+    "idle"
+  ],
+  "userConfig": {
+    "language": {
+      "type": "string",
+      "title": "Language / 语言",
+      "description": "auto follows Claude Code's language setting and your system locale. auto 跟随 Claude Code 的语言设置和系统语言。 [auto | en | zh]",
+      "default": "auto"
+    },
+    "ntfy_topic": {
+      "type": "string",
+      "title": "ntfy topic",
+      "description": "A private, hard-to-guess topic you subscribe to in the ntfy app. Run /are-you-there:setup to generate one. 在 ntfy App 里订阅的私有 topic，名字要难猜；/are-you-there:setup 可以帮你生成。",
+      "default": ""
+    },
+    "ntfy_server": {
+      "type": "string",
+      "title": "ntfy server",
+      "description": "Leave as https://ntfy.sh unless you self-host. 不自建就保持 https://ntfy.sh。",
+      "default": "https://ntfy.sh"
+    },
+    "ntfy_token": {
+      "type": "string",
+      "title": "ntfy access token (optional)",
+      "description": "Only for servers that require auth. 只有服务器要求鉴权时才填。",
+      "sensitive": true
+    },
+    "bark_url": {
+      "type": "string",
+      "title": "Bark URL (iOS, optional)",
+      "description": "Your Bark push URL, like https://api.day.app/YOUR_KEY. Bark 推送地址，形如 https://api.day.app/你的key。",
+      "sensitive": true
+    },
+    "webhook_url": {
+      "type": "string",
+      "title": "Webhook URL (optional)",
+      "description": "Slack, Discord, Feishu, DingTalk, WeCom, ServerChan, or any URL that accepts a JSON POST. 飞书、钉钉、企业微信、Server 酱等机器人地址，或任何接受 JSON POST 的地址。",
+      "sensitive": true
+    },
+    "webhook_format": {
+      "type": "string",
+      "title": "Webhook format",
+      "description": "Message shape for the webhook. 机器人消息格式。 [json | slack | discord | feishu | dingtalk | wecom | serverchan]",
+      "default": "json"
+    },
+    "away_minutes": {
+      "type": "number",
+      "title": "Away after (minutes)",
+      "description": "No keyboard or mouse input this long while another app has focus means you're away. 焦点不在终端、键鼠闲置多久算离开。",
+      "default": 3,
+      "min": 1,
+      "max": 120
+    },
+    "answer_timeout_minutes": {
+      "type": "number",
+      "title": "Wait for a phone answer (minutes)",
+      "description": "How long a question waits for your answer from the phone. 问题在手机上等你回答多久。",
+      "default": 30,
+      "min": 1,
+      "max": 110
+    },
+    "when_no_answer": {
+      "type": "string",
+      "title": "When nobody answers",
+      "description": "ask: the question waits in the terminal. decide: Claude picks the safest reversible option and leaves irreversible steps for you. ask：问题留在终端等你；decide：Claude 选最稳妥、可撤回的那条路继续，不可逆的事留给你。 [ask | decide]",
+      "default": "ask"
+    }
+  }
+}

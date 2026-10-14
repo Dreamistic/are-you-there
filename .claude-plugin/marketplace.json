@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "are-you-there",
+  "description": "Presence-aware questions and phone answers for Claude Code",
+  "owner": {
+    "name": "Dreamistic",
+    "url": "https://github.com/Dreamistic"
+  },
+  "plugins": [
+    {
+      "name": "are-you-there",
+      "description": "Lets Claude Code know whether you're at the terminal; when you're away, answer its questions from your phone.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "ntfy_topic": "ayt-replace-with-output-of-new-topic",
+  "ntfy_server": "https://ntfy.sh",
+  "bark_url": "",
+  "webhook_url": "",
+  "webhook_format": "json",
+  "language": "auto",
+  "away_minutes": 3,
+  "reading_minutes": 5,
+  "answer_timeout_minutes": 30,
+  "when_no_answer": "ask",
+  "share_app_name": true
+}
