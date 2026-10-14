@@ -14,6 +14,8 @@ Claude Code 问了你一个问题，然后干等着。你二十分钟前就去�
 
 不用跑服务器，不用注册账号，除了 Python 标准库什么都不依赖。
 
+<p align="center"><img src="docs/answer-page-zh.png" width="660" alt="手机上的答题页，亮色和暗色"></p>
+
 ## 怎么做到的
 
 ```

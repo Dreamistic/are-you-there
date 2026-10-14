@@ -14,6 +14,8 @@ It also tells Claude where you are, pushes "Claude finished" and "Claude needs p
 
 No server to run, no account, no dependencies beyond Python's standard library.
 
+<p align="center"><img src="docs/answer-page-en.png" width="660" alt="The answer page on a phone, light and dark"></p>
+
 ## How it works
 
 ```
