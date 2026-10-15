@@ -161,7 +161,7 @@ def _linux():
         out = _run(["gdbus", "call", "--session", "--dest", "org.gnome.Mutter.IdleMonitor",
                     "--object-path", "/org/gnome/Mutter/IdleMonitor/Core",
                     "--method", "org.gnome.Mutter.IdleMonitor.GetIdletime"])
-        match = re.search(r"(\d+)", out)
+        match = re.fullmatch(r"\(\s*uint64\s+(\d+)\s*,\s*\)", out.strip())
         if match:
             idle = int(match.group(1)) / 1000.0
     if idle is None and os.environ.get("DISPLAY"):
@@ -260,7 +260,11 @@ def detect(cfg: dict) -> Presence:
         return Presence(level=UNKNOWN, reason=f"error: {error}")
 
     extra = {name.lower() for name in cfg.get("terminal_apps", [])}
-    if on_terminal is False and app.lower() in (TERMINAL_APPS | extra):
+    terminal_apps = TERMINAL_APPS | extra
+    if sys.platform.startswith("linux"):
+        # /proc/<pid>/comm exposes at most 15 characters of these ASCII names.
+        terminal_apps |= {name[:15] for name in terminal_apps}
+    if on_terminal is False and app.lower() in terminal_apps:
         # Focused app is a terminal or editor that doesn't parent our shell (iTerm2, tmux, a second
         # window of the same app). Close enough: they are looking at code.
         on_terminal = True

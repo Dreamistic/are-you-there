@@ -86,6 +86,8 @@ Claude 调用 AskUserQuestion
 
 答案一律经一次性的 ntfy topic 传回来（默认走 `ntfy.sh`，可以用 `relay_server` 换掉），所以不管问题是哪个渠道送到的，都能答，不只是 ntfy。几个渠道可以同时开。
 
+Discord 的长答题链接会放进嵌入消息。链接超过 4,096 个字符时算发送失败；如果所有已配置渠道都失败，会立即执行 `when_no_answer` 的设置。
+
 [答题页](docs/answer.html)是一个放在 GitHub Pages 上的静态 HTML。问题内容放在网址的 `#` 后面，浏览器从来不把这一段发给服务器，GitHub 看不到你的问题。
 
 ## 配置
@@ -108,7 +110,7 @@ Claude 调用 AskUserQuestion
 | `phone_answer` | `true` | 推送里带答题链接和按钮，并等回复。设成 `false` 就只推不收 |
 | `allow_free_text` | `false` | 允许在手机上手写答案，不只是点选项 |
 | `share_app_name` | `true` | 你在别的窗口时，告诉 Claude 焦点在哪个应用 |
-| `desktop_notify` | `true` | 你在别的窗口时弹桌面通知（OSC 9） |
+| `desktop_notify` | `true` | 你在别的窗口时弹桌面通知：Windows 使用系统通知，其他平台通过支持 OSC 9 的终端发送 |
 | `notify_on_stop` | `true` | 你不在时，Claude 做完一轮推一条 |
 | `notify_on_permission` | `true` | 你不在时，Claude 卡在权限确认上推一条 |
 | `terminal_apps` | `[]` | 额外算作「终端」的进程名 |

@@ -86,6 +86,8 @@ Put your settings in `~/.claude/are-you-there.json` (see [config.example.json](c
 
 Answers always travel back through a one-time ntfy topic (on `ntfy.sh` unless you set `relay_server`), so every channel can answer, not just ntfy. You can configure several channels at once.
 
+Discord uses an embed for long answer links. Links longer than 4,096 characters count as a failed delivery; if every configured channel fails, `when_no_answer` applies immediately.
+
 The [answer page](docs/answer.html) is a single static HTML file served from GitHub Pages. The question reaches it in the URL fragment (`#...`), which browsers never send to the server, so GitHub never sees your questions.
 
 ## Configuration
@@ -108,7 +110,7 @@ Set options in `/config` (plugin options) or in `~/.claude/are-you-there.json`. 
 | `phone_answer` | `true` | Send an answer link and buttons, and wait for the reply. `false` makes phone pushes one-way |
 | `allow_free_text` | `false` | Accept typed answers from the phone, not only the offered options |
 | `share_app_name` | `true` | Tell Claude which app has focus when you're elsewhere |
-| `desktop_notify` | `true` | Desktop notification (OSC 9) when you're elsewhere |
+| `desktop_notify` | `true` | Desktop notification when you're elsewhere: native Windows notifications, OSC 9 in supporting terminals on other platforms |
 | `notify_on_stop` | `true` | Push when Claude finishes while you're away |
 | `notify_on_permission` | `true` | Push when Claude waits on a permission prompt while you're away |
 | `terminal_apps` | `[]` | Extra process names that count as the terminal |

@@ -163,10 +163,13 @@ class PreAskTest(Env):
 
     def test_elsewhere_rings_the_desktop(self):
         self.level("elsewhere")
-        with mock.patch.dict(os.environ, {"ARE_YOU_THERE_FORCE_APP": "Slack.exe"}):
+        with mock.patch.dict(os.environ, {"ARE_YOU_THERE_FORCE_APP": "Slack.exe"}), \
+                mock.patch.object(notify, "desktop_output", return_value={"terminalSequence": "bell"}) as desktop:
             out = hooks.pre_ask({"tool_input": {"questions": [QUESTION]}}, self.cfg())
         self.assertIn("Slack.exe", out["hookSpecificOutput"]["additionalContext"])
-        self.assertTrue(out["terminalSequence"].startswith("\x1b]9;"))
+        self.assertEqual(out["terminalSequence"], "bell")
+        desktop.assert_called_once()
+        self.assertIn(QUESTION["question"], desktop.call_args[0][0])
         self.assertEqual(self.ntfy.published, [])
 
     def test_away_answer_from_phone(self):

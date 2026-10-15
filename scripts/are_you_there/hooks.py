@@ -75,7 +75,7 @@ def pre_ask(payload: dict, cfg: dict) -> dict | None:
         out = _allow(_context(where))
         if cfg["desktop_notify"]:
             first = str(questions[0].get("question", ""))
-            out["terminalSequence"] = notify.desktop_sequence(f"{i18n.t(lang, 'desktop_question')}: {first}")
+            out.update(notify.desktop_output(f"{i18n.t(lang, 'desktop_question')}: {first}"))
         return out
 
     # Away: try the phone.
@@ -135,13 +135,12 @@ def stop(payload: dict, cfg: dict) -> dict | None:
     text = " ".join(str(payload.get("last_assistant_message") or "").split())
 
     if p.level == presence.ELSEWHERE and cfg["desktop_notify"]:
-        return {"terminalSequence": notify.desktop_sequence(f"{i18n.t(lang, 'desktop_stop')}: {text[:120]}")}
+        return notify.desktop_output(f"{i18n.t(lang, 'desktop_stop')}: {text[:120]}") or None
     if p.level != presence.AWAY or not cfg["notify_on_stop"] or not config.channels(cfg):
         return None
-    if _seen_recently("stop", text):
-        return None
     body = (text[:300] + ("…" if len(text) > 300 else "")) if text else i18n.t(lang, "push_stop_empty")
-    notify.send_all(cfg, Message(title=i18n.t(lang, "push_stop", project=_project(payload)), body=body))
+    _send_once("stop", text, payload, cfg,
+               Message(title=i18n.t(lang, "push_stop", project=_project(payload)), body=body))
     return None
 
 
@@ -155,17 +154,19 @@ def notification(payload: dict, cfg: dict) -> dict | None:
         return None
     lang = i18n.resolve(cfg["language"])
     message = str(payload.get("message") or payload.get("title") or "")
-    if _seen_recently("notification", message):
-        return None
-    notify.send_all(cfg, Message(title=i18n.t(lang, "push_attention", project=_project(payload)),
-                                 body=message[:300], urgent=True))
+    _send_once("notification", message, payload, cfg,
+               Message(title=i18n.t(lang, "push_attention", project=_project(payload)),
+                       body=message[:300], urgent=True))
     return None
 
 
-def _seen_recently(kind: str, text: str, window: float = 600) -> bool:
-    """Drop the same push within ten minutes (loops, repeated prompts)."""
+def _send_once(kind: str, text: str, payload: dict, cfg: dict, message: Message,
+               window: float = 600) -> None:
+    """Drop repeated successful pushes within the same session for ten minutes."""
     path = config.data_dir() / "recent.json"
-    key = kind + ":" + hashlib.sha1(text.encode("utf-8")).hexdigest()
+    scope = payload.get("session_id") or payload.get("transcript_path") or payload.get("cwd") or os.getcwd()
+    identity = json.dumps([scope, text], ensure_ascii=False).encode("utf-8")
+    key = kind + ":" + hashlib.sha1(identity).hexdigest()
     now = time.time()
     try:
         recent = json.loads(path.read_text(encoding="utf-8"))
@@ -173,10 +174,11 @@ def _seen_recently(kind: str, text: str, window: float = 600) -> bool:
         recent = {}
     recent = {k: v for k, v in recent.items() if now - v < window}
     if key in recent:
-        return True
+        return
+    if not notify.send_all(cfg, message):
+        return
     recent[key] = now
     try:
         path.write_text(json.dumps(recent), encoding="utf-8")
     except OSError:
         pass
-    return False
