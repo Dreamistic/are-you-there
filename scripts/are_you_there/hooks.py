@@ -89,6 +89,8 @@ def pre_ask(payload: dict, cfg: dict) -> dict | None:
     body = _summary(questions) + (f"\n\n{i18n.t(lang, 'push_tap_to_answer')}" if link else "")
     sent = notify.send_all(cfg, Message(title=title, body=body, url=link, actions=buttons, urgent=True))
     if not sent:
+        if session:
+            relay.publish_state(session, "cancelled")
         return _no_answer(cfg, lang, where, "push_failed", payload)
     if not session:
         return _allow(_context(where, i18n.t(lang, "ctx_pushed")))
@@ -104,6 +106,8 @@ def pre_ask(payload: dict, cfg: dict) -> dict | None:
         return _allow(_context(where, i18n.t(lang, "ctx_answered")), updatedInput=updated)
     if outcome == "returned":
         return _allow(_context(i18n.t(lang, "ctx_returned")))
+    if outcome == "unavailable":
+        return _no_answer(cfg, lang, where, "reply_failed", payload)
     return _no_answer(cfg, lang, where, "timeout", payload)
 
 
@@ -114,10 +118,10 @@ def _minutes(value: float) -> str:
 def _no_answer(cfg, lang, where, cause, payload) -> dict:
     """Nobody can answer right now: wait at the terminal, or let Claude decide (when_no_answer).
 
-    cause is "no_channel", "push_failed" or "timeout".
+    Only a delivered question that timed out can use the "decide" policy.
     """
     timeout = _minutes(cfg["answer_timeout_minutes"])
-    if cfg["when_no_answer"] != "decide":
+    if cfg["when_no_answer"] != "decide" or cause != "timeout":
         return _allow(_context(where, i18n.t(lang, f"ctx_{cause}", timeout=timeout)))
     if cause == "timeout":
         notify.send_all(cfg, Message(title=i18n.t(lang, "push_decided", project=_project(payload)),

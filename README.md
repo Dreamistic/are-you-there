@@ -35,6 +35,8 @@ Presence comes from two OS signals: how long since the last keyboard or mouse in
 
 Answering from the phone uses a Claude Code hook feature: a `PreToolUse` hook may fill in `AskUserQuestion`'s `answers` through `updatedInput`, and the question is then answered without a dialog. Each question gets a one-time random [ntfy](https://ntfy.sh) topic and a nonce; the hook listens on that topic and accepts only an answer with the right nonce whose value is one of the offered options.
 
+Questions have an expiry time. The answer page distinguishes sending to the relay from confirmation by the computer, and shows when a question has expired or moved back to the terminal. If confirmation cannot be retrieved, it says so instead of claiming Claude continued.
+
 ## Install
 
 ```
@@ -86,7 +88,9 @@ Put your settings in `~/.claude/are-you-there.json` (see [config.example.json](c
 
 Answers always travel back through a one-time ntfy topic (on `ntfy.sh` unless you set `relay_server`), so every channel can answer, not just ntfy. You can configure several channels at once.
 
-Discord uses an embed for long answer links. Links longer than 4,096 characters count as a failed delivery; if every configured channel fails, `when_no_answer` applies immediately.
+Discord uses an embed for long answer links. Links longer than 4,096 characters count as a failed delivery; if every configured channel fails, the question returns to the terminal.
+
+Authenticated relays require an explicit `relay_token` on the computer; `ntfy_token` is not reused. The token never appears in answer links or notification buttons. On the phone, open the page and enter a relay credential that can read and write the answer topic; the page does not save it. Native one-tap buttons are available only for anonymous relays. Use a dedicated, restricted relay account rather than an administrator credential.
 
 The [answer page](docs/answer.html) is a single static HTML file served from GitHub Pages. The question reaches it in the URL fragment (`#...`), which browsers never send to the server, so GitHub never sees your questions.
 
@@ -105,7 +109,7 @@ Set options in `/config` (plugin options) or in `~/.claude/are-you-there.json`. 
 | `away_minutes` | `3` | No input this long while another app has focus means away |
 | `reading_minutes` | `5` | Same, while the terminal has focus (reading a long answer isn't leaving) |
 | `answer_timeout_minutes` | `30` | How long a question waits for a phone answer (max 110) |
-| `when_no_answer` | `ask` | `ask`: the question then waits in the terminal. `decide`: Claude picks the safest reversible option, explains it, and leaves irreversible steps for you |
+| `when_no_answer` | `ask` | After a delivered question times out on a reachable relay: `ask` waits in the terminal; `decide` lets Claude pick the safest reversible option. Missing channels, failed delivery, and detected relay failures always return to the terminal |
 | `language` | `auto` | `auto`, `en`, `zh`. Auto follows Claude Code's `language` setting, then the system locale |
 | `phone_answer` | `true` | Send an answer link and buttons, and wait for the reply. `false` makes phone pushes one-way |
 | `allow_free_text` | `false` | Accept typed answers from the phone, not only the offered options |
@@ -114,7 +118,8 @@ Set options in `/config` (plugin options) or in `~/.claude/are-you-there.json`. 
 | `notify_on_stop` | `true` | Push when Claude finishes while you're away |
 | `notify_on_permission` | `true` | Push when Claude waits on a permission prompt while you're away |
 | `terminal_apps` | `[]` | Extra process names that count as the terminal |
-| `relay_server` / `relay_token` | `ntfy_server` / `ntfy_token` | Where phone answers travel back |
+| `relay_server` | `ntfy_server` | Where phone answers and computer receipts travel |
+| `relay_token` | | Computer-side relay credential, configured separately; never included in notifications or links |
 | `answer_page` | GitHub Pages | Host your own copy of `docs/answer.html` and point here |
 
 Environment variables `ARE_YOU_THERE_<KEY>` override everything, which is handy for testing.
@@ -135,12 +140,15 @@ Run `sh scripts/run.sh watch` to see what it detects, live. Reports from macOS a
 
 - Nothing leaves your computer unless you are away and a channel is configured.
 - The question text goes to the channel you picked. Use a self-hosted ntfy server if that matters.
-- The only thing sent back through the relay is the chosen option and a nonce, on a random topic used once.
+- The relay carries the chosen option, a nonce, and question status receipts on a random topic used once. Expired answers are rejected by the computer.
+- Long-lived relay credentials stay out of notifications and links. Authenticated phone pages request a credential explicitly and do not save it.
 - By default the hook accepts only the offered option labels, so a forged reply can't inject instructions into your agent. Turn on `allow_free_text` only with a private relay.
 - Your ntfy topic name is effectively a password. Keep it random.
 - When you're elsewhere, Claude is told which app has focus. Set `share_app_name` to `false` if you'd rather not.
 
 ## Development
+
+Publish `docs/answer.html` alongside plugin updates: the current links use protocol v2. Older links are rejected by the updated page, and older pages cannot open v2 links. If you host your own answer page, update that copy too.
 
 ```
 python -m unittest discover -s tests      # unit tests with a mock ntfy server, no network

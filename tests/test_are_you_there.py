@@ -226,7 +226,7 @@ class PreAskTest(Env):
         out = hooks.pre_ask({"tool_input": {"questions": [QUESTION]}}, self.cfg(ntfy_topic=""))
         self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "allow")
         out = hooks.pre_ask({"tool_input": {"questions": [QUESTION]}}, self.cfg(ntfy_topic="", when_no_answer="decide"))
-        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertEqual(out["hookSpecificOutput"]["permissionDecision"], "allow")
 
     def test_already_answered_input_is_left_alone(self):
         self.level("away")

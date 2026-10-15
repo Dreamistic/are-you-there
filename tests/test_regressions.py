@@ -84,6 +84,7 @@ class DeliveryRegressionTest(unittest.TestCase):
                    webhook_format="feishu", webhook_url="https://example.test/hook")
         with mock.patch.object(presence, "detect", return_value=presence.Presence(presence.AWAY, idle=600)), \
                 mock.patch.object(notify, "http", return_value=response(b'{"code":19024}')), \
+                mock.patch.object(relay, "publish_state"), \
                 mock.patch.object(relay, "wait_for_answer") as wait, redirect_stderr(io.StringIO()):
             out = hooks.pre_ask({"tool_input": {"questions": [QUESTION]}}, cfg)
         wait.assert_not_called()

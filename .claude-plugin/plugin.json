@@ -45,6 +45,18 @@
       "description": "Only for servers that require auth. 只有服务器要求鉴权时才填。",
       "sensitive": true
     },
+    "relay_server": {
+      "type": "string",
+      "title": "Answer relay server (optional)",
+      "description": "Defaults to ntfy_server. 手机答案和电脑确认使用的中继，留空时使用 ntfy_server。",
+      "default": ""
+    },
+    "relay_token": {
+      "type": "string",
+      "title": "Answer relay access token (optional)",
+      "description": "Configure separately for authenticated relays; never sent in phone links. 鉴权中继需单独配置，不再复用 ntfy_token，不随手机链接发送。",
+      "sensitive": true
+    },
     "bark_url": {
       "type": "string",
       "title": "Bark URL (iOS, optional)",
@@ -82,7 +94,7 @@
     "when_no_answer": {
       "type": "string",
       "title": "When nobody answers",
-      "description": "ask: the question waits in the terminal. decide: Claude picks the safest reversible option and leaves irreversible steps for you. ask：问题留在终端等你；decide：Claude 选最稳妥、可撤回的那条路继续，不可逆的事留给你。 [ask | decide]",
+      "description": "After successful delivery and a healthy timeout, ask waits in the terminal; decide lets Claude pick a reversible option. Delivery/relay failures always return to the terminal. 仅送达后正常超时才可 decide；发送或中继故障一律回终端。 [ask | decide]",
       "default": "ask"
     }
   }

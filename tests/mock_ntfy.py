@@ -38,6 +38,7 @@ class MockNtfy:
                 url = urlparse(self.path)
                 topic = url.path.strip("/").rsplit("/json", 1)[0]
                 since = parse_qs(url.query).get("since", ["all"])[0]
+                poll = parse_qs(url.query).get("poll", [""])[0] == "1"
                 self.send_response(200)
                 self.send_header("Content-Type", "application/x-ndjson")
                 self.end_headers()
@@ -57,6 +58,8 @@ class MockNtfy:
                             line = json.dumps({"id": msg_id, "event": "message", "topic": topic, "message": body})
                             self.wfile.write(line.encode("utf-8") + b"\n")
                             self.wfile.flush()
+                        if poll:
+                            return
                         time.sleep(0.05)
                 except OSError:
                     pass

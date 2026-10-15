@@ -11,6 +11,7 @@ back to the config file.
 """
 import json
 import os
+import sys
 from pathlib import Path
 
 DEFAULTS = {
@@ -89,8 +90,9 @@ def load() -> dict:
     cfg["answer_timeout_minutes"] = max(0.1, min(cfg["answer_timeout_minutes"], MAX_ANSWER_TIMEOUT_MINUTES))
     cfg["ntfy_server"] = cfg["ntfy_server"].rstrip("/")
     cfg["relay_server"] = (cfg["relay_server"] or cfg["ntfy_server"]).rstrip("/")
-    if not cfg["relay_token"] and cfg["relay_server"] == cfg["ntfy_server"]:
-        cfg["relay_token"] = cfg["ntfy_token"]
+    if cfg["phone_answer"] and cfg["ntfy_token"] and not cfg["relay_token"] and cfg["relay_server"] == cfg["ntfy_server"]:
+        print("are-you-there: ntfy_token is no longer reused for phone answers; "
+              "set relay_token separately if the relay requires authentication", file=sys.stderr)
     return cfg
 
 

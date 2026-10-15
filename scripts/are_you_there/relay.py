@@ -13,10 +13,12 @@ import base64
 import json
 import queue
 import secrets
+import sys
 import threading
 import time
+import urllib.error
 import urllib.parse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from .notify import http
@@ -30,15 +32,18 @@ class Session:
     topic: str
     nonce: str
     token: str = ""
+    expires_at: float = field(default_factory=lambda: time.time() + 1800)
 
     @property
     def url(self) -> str:
         return f"{self.server}/{self.topic}"
 
 
-def new_session(cfg: dict) -> Session:
+def new_session(cfg: dict, timeout: Optional[float] = None) -> Session:
+    seconds = cfg["answer_timeout_minutes"] * 60 if timeout is None else timeout
     return Session(server=cfg["relay_server"], topic="ayt-" + secrets.token_hex(16),
-                   nonce=secrets.token_hex(6), token=cfg["relay_token"])
+                   nonce=secrets.token_hex(6), token=cfg["relay_token"],
+                   expires_at=time.time() + seconds)
 
 
 def compact_questions(questions: list) -> list:
@@ -57,25 +62,27 @@ def compact_questions(questions: list) -> list:
 def answer_url(cfg: dict, session: Session, questions: list, lang: str, project: str = "") -> str:
     if not cfg["answer_page"]:
         return ""
-    data = {"v": 1, "r": session.server, "t": session.topic, "n": session.nonce, "l": lang,
+    data = {"v": 2, "r": session.server, "t": session.topic, "n": session.nonce, "l": lang,
+            "e": session.expires_at, "auth": bool(session.token),
             "x": bool(cfg["allow_free_text"]), "p": project[:60], "q": compact_questions(questions)}
-    if session.token:
-        data["k"] = session.token
     raw = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     return cfg["answer_page"] + "#" + base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
 
 def quick_buttons(session: Session, questions: list, answer_link: str, more_label: str) -> list:
     """One-tap ntfy buttons when there is a single question with few enough options."""
+    if session.token:
+        # Long-lived credentials stay on the computer. The page asks the phone
+        # user for a relay credential rather than embedding it in a notification.
+        return [{"action": "view", "label": more_label, "url": answer_link, "clear": True}] if answer_link else []
     if len(questions) != 1 or questions[0].get("multiSelect"):
         return []
     q = questions[0]
     labels = [str(o.get("label", "")) for o in q.get("options") or []]
     if not labels or len(labels) > 3:  # ntfy shows at most three buttons
         return []
-    headers = {"Authorization": f"Bearer {session.token}"} if session.token else {}
     buttons = [{"action": "http", "label": label[:40], "url": session.url, "method": "POST",
-                "headers": headers, "clear": True,
+                "headers": {}, "clear": True,
                 "body": json.dumps({"n": session.nonce, "a": {q.get("question", ""): label}}, ensure_ascii=False)}
                for label in labels]
     # A spare slot opens the page with the option descriptions; tapping the notification does too.
@@ -86,6 +93,8 @@ def quick_buttons(session: Session, questions: list, answer_link: str, more_labe
 
 def validate(message: str, session: Session, questions: list, allow_free_text: bool) -> Optional[dict]:
     """Return {question: answer} if the message is a complete, legitimate answer; else None."""
+    if time.time() >= session.expires_at:
+        return None
     try:
         data = json.loads(message)
     except (TypeError, ValueError):
@@ -120,46 +129,111 @@ class Listener(threading.Thread):
         self.session = session
         self.messages: "queue.Queue[str]" = queue.Queue()
         self.since = "all"
+        self.stopped = threading.Event()
+        self.connected = threading.Event()
+        self.unavailable = threading.Event()
+
+    def stop(self):
+        self.stopped.set()
 
     def run(self):
         headers = {"Authorization": f"Bearer {self.session.token}"} if self.session.token else {}
         delay = 1.0
-        while True:
+        while not self.stopped.is_set():
             url = f"{self.session.url}/json?since={urllib.parse.quote(self.since)}"
             try:
                 # ntfy sends a keepalive every ~45 s, so a 90 s read timeout only trips on a dead link.
                 with http(url, headers=headers, timeout=90) as response:
                     delay = 1.0
+                    self.connected.set()
                     for line in response:
+                        if self.stopped.is_set():
+                            return
                         event = json.loads(line.decode("utf-8") or "{}")
                         if event.get("event") == "message":
                             self.since = event.get("id", self.since)
                             self.messages.put(event.get("message", ""))
+            except urllib.error.HTTPError as error:
+                if error.code in (401, 403, 404):
+                    self.unavailable.set()
+                    return
             except Exception:
-                time.sleep(delay)
-                delay = min(delay * 2, 30)
+                pass
+            finally:
+                self.connected.clear()
+            self.stopped.wait(delay)
+            delay = min(delay * 2, 30)
+
+
+def publish_state(session: Session, state: str) -> bool:
+    """Report what the computer did, without copying credentials into the message."""
+    headers = {"Authorization": f"Bearer {session.token}"} if session.token else {}
+    data = json.dumps({"n": session.nonce, "s": state}).encode("utf-8")
+    try:
+        with http(session.url, data, headers, "POST", timeout=4) as response:
+            return 200 <= response.status < 300
+    except Exception:
+        print("are-you-there: could not publish the answer status", file=sys.stderr)
+        return False
+
+
+def _relay_available(session: Session) -> bool:
+    """Check the reply path before treating silence as a genuine timeout."""
+    headers = {"Authorization": f"Bearer {session.token}"} if session.token else {}
+    try:
+        with http(session.url + "/json?poll=1&since=all", headers=headers, timeout=3) as response:
+            if not 200 <= response.status < 300:
+                return False
+            for line in response:
+                event = json.loads(line.decode("utf-8"))
+                if not isinstance(event, dict) or event.get("event") not in ("open", "keepalive", "message"):
+                    return False
+        return True
+    except Exception:
+        return False
 
 
 def wait_for_answer(session: Session, questions: list, cfg: dict, timeout: float, came_back) -> tuple:
     """Block until a valid answer arrives, the user returns, or time runs out.
 
-    Returns ("answered", answers), ("returned", None) or ("timeout", None).
+    Returns ("answered", answers), ("returned", None), ("timeout", None),
+    or ("unavailable", None) when the relay cannot receive an answer.
     `came_back` is a zero-argument callable checked every couple of seconds.
     """
+    remaining = max(0, min(timeout, session.expires_at - time.time()))
+    if not remaining:
+        publish_state(session, "expired")
+        return "unavailable", None
     listener = Listener(session)
     listener.start()
-    deadline = time.monotonic() + timeout
+    deadline = time.monotonic() + remaining
     next_check = time.monotonic() + 2
-    while time.monotonic() < deadline:
-        try:
-            message = listener.messages.get(timeout=0.5)
-            answers = validate(message, session, questions, cfg["allow_free_text"])
-            if answers:
-                return "answered", answers
-        except queue.Empty:
-            pass
-        if time.monotonic() >= next_check:
-            next_check = time.monotonic() + 2
-            if came_back():
-                return "returned", None
-    return "timeout", None
+    state = "unavailable"
+    try:
+        while time.monotonic() < deadline:
+            # A reply can already be queued when a subsequent reconnect fails.
+            # Consume those replies before treating the transport as unavailable.
+            if listener.unavailable.is_set() and listener.messages.empty():
+                return "unavailable", None
+            try:
+                message = listener.messages.get(timeout=0.5)
+                if time.monotonic() >= deadline:
+                    break
+                answers = validate(message, session, questions, cfg["allow_free_text"])
+                if answers:
+                    state = "accepted"
+                    return "answered", answers
+            except queue.Empty:
+                pass
+            if time.monotonic() >= next_check:
+                next_check = time.monotonic() + 2
+                if came_back():
+                    state = "cancelled"
+                    return "returned", None
+        if listener.connected.is_set() and _relay_available(session):
+            state = "expired"
+            return "timeout", None
+        return "unavailable", None
+    finally:
+        listener.stop()
+        publish_state(session, state)

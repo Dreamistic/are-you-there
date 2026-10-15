@@ -10,8 +10,8 @@
 <!--
   Answer page for the are-you-there Claude Code plugin.
   Everything this page needs travels in the URL fragment (#...), which browsers
-  never send to the server hosting this file. The only network request is the
-  answer itself, POSTed to the one-time relay topic named in the fragment.
+  never send to the server hosting this file. Answers and computer receipts use
+  the one-time relay topic. Relay credentials are entered on the phone, not linked.
 -->
 <style>
   :root {
@@ -80,16 +80,32 @@
     en: {
       title: "Claude has a question", from: "From {p}", pick: "Pick one", pickMany: "Pick one or more",
       other: "Other", otherPh: "Type your answer", send: "Send answer", sending: "Sending…",
-      sentTitle: "Sent", sentBody: "Claude has your answer and is carrying on. You can close this page.",
+      acceptedTitle: "Received by your computer", acceptedBody: "The computer accepted an answer for this question. You can close this page.",
+      submittedTitle: "Sent, awaiting confirmation", submittedBody: "Your answer was sent. Waiting for the computer to confirm receipt…",
+      unconfirmedTitle: "Answer not confirmed", unconfirmedBody: "The computer has not confirmed receipt. Check the terminal before assuming the answer was applied.",
+      cancelledTitle: "Continue at the terminal", cancelledBody: "This phone question was cancelled. Answer it at the computer.",
+      expiredTitle: "This question has expired", expiredBody: "The phone answer window has closed. Check the terminal for the current question.",
+      unavailableTitle: "Computer could not receive answers", unavailableBody: "The question has returned to the terminal. Check the computer and relay settings.",
+      authTitle: "Relay access token", authHint: "Enter a token that can read and write this relay topic. It is used only on this page and is not saved.",
+      authDestination: "Credential destination: {r}",
+      checkReceipt: "Check receipt", reenterToken: "Re-enter the relay token to check receipt. Your answer will not be sent again.",
       failed: "Couldn't send. Check your connection and try again.",
-      badTitle: "This link doesn't work", badBody: "Open it from the notification on this phone, without editing it."
+      badTitle: "This link is invalid or outdated", badBody: "Open a new question notification. The answer page and plugin must be updated together."
     },
     zh: {
       title: "Claude 有个问题要问你", from: "来自 {p}", pick: "选一个", pickMany: "可以多选",
       other: "其他", otherPh: "写下你的回答", send: "发送", sending: "发送中…",
-      sentTitle: "发过去了", sentBody: "Claude 收到了你的回答，正在继续。这个页面可以关掉了。",
+      acceptedTitle: "电脑已接收", acceptedBody: "电脑已接受本题的答案。这个页面可以关掉了。",
+      submittedTitle: "已发送，等待电脑确认", submittedBody: "答案已发送，正在等待电脑确认接收…",
+      unconfirmedTitle: "答案暂未确认", unconfirmedBody: "尚未收到电脑确认。请查看终端，确认答案是否已被采用。",
+      cancelledTitle: "请回终端继续", cancelledBody: "这次手机提问已取消，请在电脑上回答。",
+      expiredTitle: "这道题已过期", expiredBody: "手机作答时间已结束，请到终端查看当前问题。",
+      unavailableTitle: "电脑暂时无法接收答案", unavailableBody: "问题已转回终端，请检查电脑和中继配置。",
+      authTitle: "中继访问令牌", authHint: "输入可读写本中继主题的令牌。凭据仅用于当前页面，不会保存。",
+      authDestination: "凭据将发送至：{r}",
+      checkReceipt: "查询接收状态", reenterToken: "重新输入中继令牌即可查询状态，不会重复发送答案。",
       failed: "没发出去，检查一下网络再试一次。",
-      badTitle: "这个链接打不开", badBody: "从手机上的通知直接点进来，别改动链接。"
+      badTitle: "链接无效或来自旧版本", badBody: "请打开新问题的通知。答题页需要和插件一起更新。"
     }
   };
   var app = document.getElementById("app");
@@ -131,7 +147,8 @@
   var data;
   try {
     data = decode(location.hash.slice(1));
-    if (!data || data.v !== 1 || !/^https?:\/\//.test(data.r) || !data.t || !data.n || !Array.isArray(data.q)) throw 0;
+    if (!data || data.v !== 2 || data.k || !/^https?:\/\//.test(data.r) || !data.t || !data.n ||
+        !Array.isArray(data.q) || !data.q.length || typeof data.e !== "number" || !Number.isFinite(data.e)) throw 0;
   } catch (e) {
     message(false, s("badTitle"), s("badBody"));
     return;
@@ -139,8 +156,26 @@
   if (T[data.l]) lang = data.l;
   document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
   var doneKey = "ayt:" + data.t;
+  var stage = "open", expiryTimer = null;
+  var terminalStates = ["accepted", "cancelled", "expired", "unavailable"];
+  var endpoint = data.r.replace(/\/+$/, "") + "/" + encodeURIComponent(data.t);
 
-  if (sessionStorage.getItem(doneKey)) { message(true, s("sentTitle"), s("sentBody")); return; }
+  function storedState() {
+    try { return sessionStorage.getItem(doneKey); } catch (e) { return null; }
+  }
+  function showState(state) {
+    if (stage === "accepted") return;
+    stage = state;
+    if (terminalStates.indexOf(state) !== -1) clearTimeout(expiryTimer);
+    try { sessionStorage.setItem(doneKey, state); } catch (e) { /* Storage may be disabled. */ }
+    message(state === "accepted" || state === "submitted" || state === "unconfirmed",
+            s(state + "Title"), s(state + "Body"));
+  }
+
+  var previous = storedState();
+  var recovering = previous === "submitted" || previous === "unconfirmed";
+  if (terminalStates.indexOf(previous) !== -1) { showState(previous); return; }
+  if (Date.now() >= data.e * 1000 && !recovering) { showState("expired"); return; }
 
   var groups = [];
   var header = el("div", null,
@@ -149,7 +184,18 @@
     data.p ? el("p", { class: "sub", text: s("from", { p: data.p }) }) : el("p", { class: "sub" }));
   app.replaceChildren(header);
 
-  data.q.forEach(function (q, qi) {
+  var credential = null;
+  if (data.auth) {
+    credential = el("input", { class: "other", type: "password", autocomplete: "off",
+                              "aria-label": s("authTitle") });
+    credential.addEventListener("input", refresh);
+    app.appendChild(el("section", { class: "q" },
+      el("label", null, el("span", { class: "label", text: s("authTitle") }), credential),
+      el("p", { class: "desc", text: s("authDestination", { r: new URL(data.r).origin }) }),
+      el("p", { class: "desc", text: s("authHint") })));
+  }
+
+  if (!recovering) data.q.forEach(function (q, qi) {
     var multi = !!q.m, name = "q" + qi;
     var box = el("section", { class: "q" + (multi ? " multi" : "") },
       q.h ? el("span", { class: "chip", text: q.h }) : null,
@@ -176,11 +222,11 @@
   });
 
   var error = el("p", { class: "err" });
-  var button = el("button", { type: "button", text: s("send") });
+  var button = el("button", { type: "button", text: s(recovering ? "checkReceipt" : "send") });
   document.body.appendChild(el("div", { class: "bar" }, el("div", null, error, button)));
 
   function collect() {
-    var answers = {};
+    var answers = Object.create(null);
     for (var i = 0; i < groups.length; i++) {
       var g = groups[i], picked = [];
       g.inputs.forEach(function (input) { if (input.checked) picked.push(input.value); });
@@ -190,28 +236,110 @@
     }
     return answers;
   }
-  function refresh() { button.disabled = !collect(); }
+  function refresh() {
+    button.disabled = stage !== "open" || (!recovering && !collect()) || !!(credential && !credential.value.trim());
+  }
   refresh();
 
-  button.addEventListener("click", function () {
+  async function request(url, init) {
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, 4000);
+    init = init || {};
+    init.signal = controller.signal;
+    init.cache = "no-store";
+    if (credential && credential.value.trim()) init.headers = { Authorization: "Bearer " + credential.value.trim() };
+    try {
+      var res = await fetch(url, init);
+      if (!res.ok) {
+        var failure = new Error(res.status);
+        failure.status = res.status;
+        throw failure;
+      }
+      return await res.text();
+    } finally { clearTimeout(timer); }
+  }
+
+  async function readState() {
+    try {
+      var text = await request(endpoint + "/json?poll=1&since=all");
+      var state = null;
+      text.split("\n").forEach(function (line) {
+        try {
+          var event = JSON.parse(line);
+          if (event.event !== "message") return;
+          var receipt = JSON.parse(event.message);
+          if (receipt.n === data.n && terminalStates.indexOf(receipt.s) !== -1) state = receipt.s;
+        } catch (e) { /* Ignore keepalives and unrelated messages. */ }
+      });
+      return state;
+    } catch (e) { return null; }
+  }
+
+  async function waitForReceipt() {
+    var deadline = Date.now() + 20000;
+    while (Date.now() < deadline) {
+      var state = await readState();
+      if (state) { showState(state); return; }
+      if (terminalStates.indexOf(stage) !== -1) return;
+      await new Promise(function (resolve) { setTimeout(resolve, 1500); });
+    }
+    if (stage === "submitted") showState("unconfirmed");
+  }
+
+  expiryTimer = setTimeout(function () {
+    // A submission just before expiry may already have been accepted. Let its
+    // receipt win rather than replacing it with the phone's local clock.
+    if (stage === "open" && !recovering) showState("expired");
+  }, Math.max(0, data.e * 1000 - Date.now()));
+  if (recovering) {
+    if (!credential) { showState("submitted"); waitForReceipt(); return; }
+    error.textContent = s("reenterToken");
+  }
+  // Do not probe an authenticated relay before the phone user supplies a token.
+  if (!credential) readState().then(function (state) { if (state) showState(state); });
+
+  button.addEventListener("click", async function () {
+    if (stage !== "open") return;
+    if (credential && !credential.value.trim()) return;
+    if (recovering) {
+      showState("submitted");
+      await waitForReceipt();
+      return;
+    }
+    if (Date.now() >= data.e * 1000) { showState("expired"); return; }
     var answers = collect();
-    if (!answers) return;
+    if (!answers || (credential && !credential.value.trim())) return;
+    stage = "sending";
     button.disabled = true;
     button.textContent = s("sending");
     error.textContent = "";
     var init = { method: "POST", body: JSON.stringify({ n: data.n, a: answers }) };
-    if (data.k) init.headers = { Authorization: "Bearer " + data.k };
-    fetch(data.r.replace(/\/+$/, "") + "/" + encodeURIComponent(data.t), init)
-      .then(function (res) {
-        if (!res.ok) throw new Error(res.status);
-        sessionStorage.setItem(doneKey, "1");
-        message(true, s("sentTitle"), s("sentBody"));
-      })
-      .catch(function () {
+    var attempted = false;
+    try {
+      var before = await readState();
+      if (before) { showState(before); return; }
+      if (Date.now() >= data.e * 1000) { showState("expired"); return; }
+      attempted = true;
+      await request(endpoint, init);
+      if (terminalStates.indexOf(stage) !== -1) return;
+      showState("submitted");
+      await waitForReceipt();
+    } catch (e) {
+      if (stage === "sending") {
+        if (attempted && (!e.status || e.status >= 500)) {
+          // The POST may have reached the relay even if its response was lost.
+          // Do not claim expiry or let a retry replace an already accepted answer.
+          showState("unconfirmed");
+          await waitForReceipt();
+          return;
+        }
+        if (Date.now() >= data.e * 1000) { showState("expired"); return; }
+        stage = "open";
         error.textContent = s("failed");
         button.textContent = s("send");
         refresh();
-      });
+      }
+    }
   });
 })();
 </script>

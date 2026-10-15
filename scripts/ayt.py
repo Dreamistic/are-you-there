@@ -93,7 +93,7 @@ def test(ask: bool) -> int:
     questions = [{"question": i18n.t(lang, "test_question"), "header": i18n.t(lang, "test_header"), "multiSelect": False,
                   "options": [{"label": i18n.t(lang, "test_yes"), "description": i18n.t(lang, "test_yes_desc")},
                               {"label": i18n.t(lang, "test_no"), "description": i18n.t(lang, "test_no_desc")}]}]
-    session = relay.new_session(cfg)
+    session = relay.new_session(cfg, timeout=180)
     link = relay.answer_url(cfg, session, questions, lang)
     buttons = relay.quick_buttons(session, questions, link, i18n.t(lang, "push_button_more"))
     sent = notify.send_all(cfg, notify.Message(title=i18n.t(lang, "test_title"), body=questions[0]["question"],

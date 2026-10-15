@@ -26,6 +26,8 @@ Ask with AskUserQuestion which channel they want:
 
 Any channel can answer questions: answers travel back through a one-time ntfy topic regardless of which channel delivered the question.
 
+For an authenticated relay, configure `relay_token` explicitly; it no longer inherits `ntfy_token`. Recommend a dedicated account restricted to the reply topics. Relay credentials are never included in phone links or action buttons: the phone page asks for a read/write relay credential and does not save it. Tell the user that authenticated relays use the answer page instead of native one-tap HTTP buttons.
+
 ## 3. Configure
 
 For **ntfy**: run `sh "${CLAUDE_PLUGIN_ROOT}/scripts/run.sh" new-topic` to get a random topic. Tell the user to install the ntfy app and subscribe to exactly that topic on `https://ntfy.sh` (or their own server). The topic name is the only thing keeping strangers out, so never suggest a guessable name.
@@ -46,12 +48,14 @@ Save the values. Two places work:
 }
 ```
 
-Keys: `ntfy_topic`, `ntfy_server`, `ntfy_token`, `bark_url`, `webhook_url`, `webhook_format` (`json|slack|discord|feishu|dingtalk|wecom|serverchan`), `away_minutes`, `answer_timeout_minutes`, `when_no_answer` (`ask|decide`), `language` (`auto|en|zh`). The README lists the advanced ones.
+Keys: `ntfy_topic`, `ntfy_server`, `ntfy_token`, `relay_server`, `relay_token`, `bark_url`, `webhook_url`, `webhook_format` (`json|slack|discord|feishu|dingtalk|wecom|serverchan`), `away_minutes`, `answer_timeout_minutes`, `when_no_answer` (`ask|decide`), `language` (`auto|en|zh`). `decide` applies only after successful delivery and a healthy timeout; channel/relay failures always return to the terminal. The README lists the advanced ones.
 
 ## 4. Test
 
 Run `sh "${CLAUDE_PLUGIN_ROOT}/scripts/run.sh" test --ask`. It sends a test question to every channel and waits up to three minutes for the answer. Tell the user to answer it on the phone. The command prints `answered: {...}` on success.
 
 If nothing arrives, check in this order: the topic in the app matches exactly; the phone allows notifications for the app; a proxy or firewall is not blocking ntfy.sh from the computer (the script honours HTTP(S)_PROXY).
+
+If the page says the link is outdated, publish the updated `docs/answer.html` together with the plugin (or update the configured self-hosted copy). For an authenticated relay, check the explicit computer-side `relay_token` and the credential entered on the phone. A sent-but-unconfirmed answer is not proof that the computer received it; check the terminal.
 
 Finish by telling them what happens from now on, in one or two sentences: when they're away for a few minutes, Claude's questions go to their phone; when they come back to the terminal, the question shows up there as usual.
